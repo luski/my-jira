@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::rc::Rc;
 
 use anyhow::anyhow;
@@ -6,13 +7,12 @@ use itertools::Itertools;
 
 use crate::db::JiraDatabase;
 use crate::models::Action;
-
-mod page_helpers;
-use page_helpers::*;
+use crate::ui::table::TableBuilder;
 
 pub trait Page {
     fn draw_page(&self) -> Result<()>;
     fn handle_input(&self, input: &str) -> Result<Option<Action>>;
+    fn as_any(&self) -> &dyn Any;
 }
 
 pub struct HomePage {
@@ -21,18 +21,28 @@ pub struct HomePage {
 impl Page for HomePage {
     fn draw_page(&self) -> Result<()> {
         let db_state = self.db.read_db()?;
-        let col_widths = vec![12, 34, 18];
-        draw_table(
-            "EPICS",
-            &vec!["id".to_owned(), "name".to_owned(), "status".to_owned()],
-            &db_state
-                .epics
-                .iter()
-                .sorted_by_key(|x| x.0)
-                .map(|(id, epic)| vec![id.to_string(), epic.name.clone(), epic.status.to_string()])
-                .collect(),
-            &col_widths,
-        )?;
+
+        let mut table = TableBuilder::new()
+            .set_title("EPICS")
+            .add_column("id", 12)
+            .add_column("name", 34)
+            .add_column("status", 18)
+            .build();
+
+        db_state
+            .epics
+            .iter()
+            .sorted_by_key(|x| x.0)
+            .try_for_each(|(id, epic)| -> Result<()> {
+                table.add_row(vec![
+                    id.to_string(),
+                    epic.name.to_string(),
+                    epic.status.to_string(),
+                ])?;
+                Ok(())
+            })?;
+
+        println!("{table}");
 
         println!();
         println!();
@@ -60,6 +70,10 @@ impl Page for HomePage {
             }
         }
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 pub struct EpicDetail {
@@ -75,40 +89,47 @@ impl Page for EpicDetail {
             .get(&self.epic_id)
             .ok_or_else(|| anyhow!("could not find epic!"))?;
 
-        draw_table(
-            "EPIC",
-            &vec![
-                "id".to_string(),
-                "name".to_string(),
-                "description".to_string(),
-                "status".to_string(),
-            ],
-            &vec![vec![
-                self.epic_id.to_string(),
-                epic.name.clone(),
-                epic.description.clone(),
-                epic.status.to_string(),
-            ]],
-            &vec![6, 14, 29, 14],
-        )?;
+        let mut table = TableBuilder::new()
+            .set_title("EPIC")
+            .add_column("id", 6)
+            .add_column("name", 14)
+            .add_column("description", 29)
+            .add_column("status", 14)
+            .build();
 
+        table.add_row(vec![
+            self.epic_id.to_string(),
+            epic.name.to_string(),
+            epic.description.to_string(),
+            epic.status.to_string(),
+        ])?;
+
+        println!("{table}");
         println!();
 
-        let stories = &db_state.stories;
-        draw_table(
-            "STORIES",
-            &vec!["id".to_string(), "name".to_string(), "status".to_string()],
-            &stories
-                .iter()
-                .filter(|(story_id, _)| epic.stories.contains(story_id))
-                .sorted_by_key(|(&id, _)| id)
-                .map(|(id, story)| {
-                    vec![id.to_string(), story.name.clone(), story.status.to_string()]
-                })
-                .collect(),
-            &vec![12, 34, 18],
-        )?;
+        let mut table = TableBuilder::new()
+            .set_title("STORIES")
+            .add_column("id", 6)
+            .add_column("name", 42)
+            .add_column("status", 15)
+            .build();
 
+        self.db
+            .read_db()?
+            .stories
+            .iter()
+            .filter(|(id, _)| epic.stories.contains(id))
+            .sorted_by_key(|(&id, _)| id)
+            .try_for_each(|(story_id, story)| -> Result<()> {
+                table.add_row(vec![
+                    story_id.to_string(),
+                    story.name.clone(),
+                    story.status.to_string(),
+                ])?;
+                Ok(())
+            })?;
+
+        println!("{table}");
         println!();
         println!();
 
@@ -146,6 +167,10 @@ impl Page for EpicDetail {
             }
         }
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 pub struct StoryDetail {
@@ -162,23 +187,22 @@ impl Page for StoryDetail {
             .get(&self.story_id)
             .ok_or_else(|| anyhow!("could not find story!"))?;
 
-        draw_table(
-            "STORY",
-            &vec![
-                "id".to_string(),
-                "name".to_string(),
-                "description".to_string(),
-                "status".to_string(),
-            ],
-            &vec![vec![
-                self.story_id.to_string(),
-                story.name.clone(),
-                story.description.clone(),
-                story.status.to_string(),
-            ]],
-            &vec![6, 14, 29, 14],
-        )?;
+        let mut table = TableBuilder::new()
+            .set_title("STORY")
+            .add_column("id", 6)
+            .add_column("name", 14)
+            .add_column("description", 29)
+            .add_column("status", 14)
+            .build();
 
+        table.add_row(vec![
+            self.story_id.to_string(),
+            story.name.clone(),
+            story.description.clone(),
+            story.status.to_string(),
+        ])?;
+
+        println!("{table}");
         println!();
         println!();
 
@@ -199,6 +223,10 @@ impl Page for StoryDetail {
             })),
             _ => Ok(None),
         }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
